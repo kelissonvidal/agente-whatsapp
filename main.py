@@ -33,6 +33,7 @@ def gerar_resposta(msg):
     else:
         return "Estou aqui pra tirar suas dúvidas! Deseja saber como funciona o suplemento ou ver resultados reais?"
 
+# Função que envia mensagem via Z-API
 def enviar_mensagem(telefone, texto):
     payload = {
         "phone": telefone,
@@ -41,21 +42,21 @@ def enviar_mensagem(telefone, texto):
     headers = {'Content-Type': 'application/json'}
 
     print(f"📨 Enviando para {telefone}: {texto}")
-
-    resposta = requests.post(API_URL, json=payload, headers=headers)
-
-
+    resposta = requests.post(f"{API_URL}/send-message", json=payload, headers=headers)
     print(f"🔄 Status da resposta: {resposta.status_code}")
     print(f"📬 Conteúdo da resposta: {resposta.text}")
 
-    # ESSA LINHA INICIA O SERVIDOR
-    # Teste direto de envio (executa no carregamento do app na Render)
-    telefone_teste = "5537998278996"
-    texto_teste = "🚀 Teste disparado assim que o app sobe (sem depender do __main__)"
-    enviar_mensagem(telefone_teste, texto_teste)
 
-    # Iniciar o servidor Flask (somente se rodar localmente)
-    if __name__ == "__main__":
-        app.run(host='0.0.0.0', port=81)
+# 🔽 TESTE FORÇADO (após a definição da função)
+telefone_teste = "5537998278996"
+texto_teste = "🚀 Teste direto no topo do main.py"
+print("🟢 Executando teste imediato de envio...")
+enviar_mensagem(telefone_teste, texto_teste)
+
+
+# Inicia o servidor Flask localmente (Render ignora isso)
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=81)
+
 
 

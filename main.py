@@ -3,7 +3,7 @@ import requests
 
 app = Flask(__name__)
 
-API_URL = "https://api.z-api.io/instances/3DF189F728F4A0C2E72632C54B267657/token/4ADA364DCC70ABFE1175200B"
+API_URL = "https://api.z-api.io/instances/3DF189F728F4A0C2E72632C54B267657/token/4ADA364DCC70ABFE1175200B/send-message"
 
 
 # Função para envio da mensagem
@@ -20,7 +20,7 @@ def enviar_mensagem(telefone, texto):
     print(f"📬 Conteúdo da resposta: {resposta.text}")
 
 # Teste forçado (depois da definição da função!)
-telefone_teste = "5537998278996"
+telefone_teste = "553734490005"
 texto_teste = "🚀 Teste direto no topo do main.py"
 print("🟢 Executando teste imediato de envio...")
 enviar_mensagem(telefone_teste, texto_teste)

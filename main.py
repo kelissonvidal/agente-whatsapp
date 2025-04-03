@@ -3,8 +3,8 @@ import requests
 
 app = Flask(__name__)
 
-API_URL = "API_URL = "https://v2.z-api.io/instances/3DF189F728F4A0C2E72632C54B267657/token/4ADA364DCC70ABFE1175200B/send-text"
-"
+API_URL = "https://v2.z-api.io/instances/3DF189F728F4A0C2E72632C54B267657/token/4ADA364DCC70ABFE1175200B/send-text"
+
 
 @app.route('/webhook', methods=['POST'])
 def receber_mensagem():

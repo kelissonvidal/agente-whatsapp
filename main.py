@@ -5,12 +5,26 @@ app = Flask(__name__)
 
 API_URL = "https://v2.z-api.io/instances/3DF189F728F4A0C2E72632C54B267657/token/4ADA364DCC70ABFE1175200B/send-text"
 
-# EXECUTA DIRETO NO CARREGAMENTO DO APP (mesmo no Render)
+# Função para envio da mensagem
+def enviar_mensagem(telefone, texto):
+    payload = {
+        "phone": telefone,
+        "message": texto
+    }
+    headers = {'Content-Type': 'application/json'}
+
+    print(f"📨 Enviando para {telefone}: {texto}")
+    resposta = requests.post(API_URL, json=payload, headers=headers)
+    print(f"🔄 Status da resposta: {resposta.status_code}")
+    print(f"📬 Conteúdo da resposta: {resposta.text}")
+
+# Teste forçado (depois da definição da função!)
 telefone_teste = "5537998278996"
 texto_teste = "🚀 Teste direto no topo do main.py"
 print("🟢 Executando teste imediato de envio...")
 enviar_mensagem(telefone_teste, texto_teste)
 
+# Endpoint do webhook
 @app.route('/webhook', methods=['POST'])
 def receber_mensagem():
     data = request.json
@@ -21,7 +35,6 @@ def receber_mensagem():
         resposta = gerar_resposta(msg)
         enviar_mensagem(telefone, resposta)
         return jsonify({"status": "mensagem enviada"})
-
     return jsonify({"status": "nada recebido"})
 
 def gerar_resposta(msg):
@@ -33,30 +46,6 @@ def gerar_resposta(msg):
     else:
         return "Estou aqui pra tirar suas dúvidas! Deseja saber como funciona o suplemento ou ver resultados reais?"
 
-# Função que envia mensagem via Z-API
-def enviar_mensagem(telefone, texto):
-    payload = {
-        "phone": telefone,
-        "message": texto
-    }
-    headers = {'Content-Type': 'application/json'}
-
-    print(f"📨 Enviando para {telefone}: {texto}")
-    resposta = requests.post(f"{API_URL}/send-message", json=payload, headers=headers)
-    print(f"🔄 Status da resposta: {resposta.status_code}")
-    print(f"📬 Conteúdo da resposta: {resposta.text}")
-
-
-# 🔽 TESTE FORÇADO (após a definição da função)
-telefone_teste = "5537998278996"
-texto_teste = "🚀 Teste direto no topo do main.py"
-print("🟢 Executando teste imediato de envio...")
-enviar_mensagem(telefone_teste, texto_teste)
-
-
-# Inicia o servidor Flask localmente (Render ignora isso)
+# Executa localmente (Render ignora)
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=81)
-
-
-

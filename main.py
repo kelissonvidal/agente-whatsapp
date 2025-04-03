@@ -43,11 +43,13 @@ def enviar_mensagem(telefone, texto):
     print(f"🔄 Status da resposta: {resposta.status_code}")
     print(f"📬 Conteúdo da resposta: {resposta.text}")
 
-# ESSA LINHA INICIA O SERVIDOR
-if __name__ == "__main__":
-    # Teste de envio direto (substitua pelo seu número real com DDI + DDD)
-    telefone_teste = "5537998278996"  # Ex: 553499999999
-    texto_teste = "🧪 Teste automático de envio via Z-API"
-    enviar_mensagem(telefone_teste, texto_teste)
+    # ESSA LINHA INICIA O SERVIDOR
+    if __name__ == "__main__":
+        # Teste direto de envio (isso será executado assim que o servidor for iniciado)
+        telefone_teste = "5537998278996"  # coloque seu número real com DDI + DDD
+        texto_teste = "🔁 Teste forçado direto da função enviar_mensagem()"
+        enviar_mensagem(telefone_teste, texto_teste)
 
-    app.run(host='0.0.0.0', port=81)
+        # Iniciar o servidor Flask
+        app.run(host='0.0.0.0', port=81)
+

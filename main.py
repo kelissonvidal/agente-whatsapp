@@ -3,7 +3,8 @@ import requests
 
 app = Flask(__name__)
 
-API_URL = "https://api.z-api.io/instances/3DF189F728F4A0C2E72632C54B267657/token/4ADA364DCC70ABFE1175200B"
+API_URL = "API_URL = "https://v2.z-api.io/instances/3DF189F728F4A0C2E72632C54B267657/token/4ADA364DCC70ABFE1175200B/send-text"
+"
 
 @app.route('/webhook', methods=['POST'])
 def receber_mensagem():
@@ -36,7 +37,8 @@ def enviar_mensagem(telefone, texto):
 
     print(f"📨 Enviando para {telefone}: {texto}")
 
-    resposta = requests.post(f"{API_URL}/send-message", json=payload, headers=headers)
+    resposta = requests.post(API_URL, json=payload, headers=headers)
+
 
     print(f"🔄 Status da resposta: {resposta.status_code}")
     print(f"📬 Conteúdo da resposta: {resposta.text}")

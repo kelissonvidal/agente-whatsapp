@@ -11,8 +11,8 @@ def enviar_mensagem(telefone, texto):
         "message": texto
     }
     headers = {
-        'Content-Type': 'application/json'
-        # NÃO coloque Client-Token aqui
+        "Content-Type": "application/json"
+        # NÃO colocar Client-Token aqui!
     }
 
     print(f"📨 Enviando para {telefone}: {texto}")

@@ -15,7 +15,7 @@ def enviar_mensagem(telefone, texto):
     headers = {'Content-Type': 'application/json'}
 
     print(f"📨 Enviando para {telefone}: {texto}")
-    resposta = requests.post(API_URL, json=payload, headers=headers)
+    resposta = requests.post(f"{API_URL}/send-text", json=payload, headers=headers)
     print(f"🔄 Status da resposta: {resposta.status_code}")
     print(f"📬 Conteúdo da resposta: {resposta.text}")
 

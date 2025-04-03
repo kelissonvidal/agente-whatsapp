@@ -5,6 +5,11 @@ app = Flask(__name__)
 
 API_URL = "https://v2.z-api.io/instances/3DF189F728F4A0C2E72632C54B267657/token/4ADA364DCC70ABFE1175200B/send-text"
 
+# EXECUTA DIRETO NO CARREGAMENTO DO APP (mesmo no Render)
+telefone_teste = "5537998278996"
+texto_teste = "🚀 Teste direto no topo do main.py"
+print("🟢 Executando teste imediato de envio...")
+enviar_mensagem(telefone_teste, texto_teste)
 
 @app.route('/webhook', methods=['POST'])
 def receber_mensagem():

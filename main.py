@@ -46,9 +46,8 @@ def enviar_mensagem(telefone, texto):
 # ESSA LINHA INICIA O SERVIDOR
 if __name__ == "__main__":
     # Teste de envio direto (substitua pelo seu número real com DDI + DDD)
-    if __name__ == "__main__":
-        telefone_teste = "5537998278996"  # Ex: 553499999999
-        texto_teste = "🧪 Teste automático de envio via Z-API"
-        enviar_mensagem(telefone_teste, texto_teste)
+    telefone_teste = "5537998278996"  # Ex: 553499999999
+    texto_teste = "🧪 Teste automático de envio via Z-API"
+    enviar_mensagem(telefone_teste, texto_teste)
 
-        app.run(host='0.0.0.0', port=81)
+    app.run(host='0.0.0.0', port=81)

@@ -3,11 +3,8 @@ import requests
 
 app = Flask(__name__)
 
-# Endpoint FIXO da Z-API
-API_URL = "https://api.z-api.io/send-message"
-
-# Token da instância
-CLIENT_TOKEN = "4ADA364DCC70ABFE1175200B"
+# ✅ SUA URL COMPLETA (com token na URL)
+API_URL = "https://api.z-api.io/instances/3DF189F728F4A0C2E72632C54B267657/token/4ADA364DCC70ABFE1175200B/send-message"
 
 def enviar_mensagem(telefone, texto):
     payload = {
@@ -15,8 +12,7 @@ def enviar_mensagem(telefone, texto):
         "message": texto
     }
     headers = {
-        "Content-Type": "application/json",
-        "Client-Token": CLIENT_TOKEN  # O token agora vai no cabeçalho
+        "Content-Type": "application/json"
     }
 
     print(f"📨 Enviando para {telefone}: {texto}")
@@ -26,7 +22,7 @@ def enviar_mensagem(telefone, texto):
 
 # Teste forçado
 telefone_teste = "5537998278996"
-texto_teste = "🚀 Teste direto no topo do main.py"
+texto_teste = "🚀 Teste agora com URL clássica da Z-API"
 print("🟢 Executando teste imediato de envio...")
 enviar_mensagem(telefone_teste, texto_teste)
 

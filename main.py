@@ -3,7 +3,11 @@ import requests
 
 app = Flask(__name__)
 
-API_URL = "https://api.z-api.io/instances/3DF189F728F4A0C2E72632C54B267657/token/4ADA364DCC70ABFE1175200B/send-text"
+# NOVO ENDPOINT FIXO DA Z-API
+API_URL = "https://api.z-api.io/send-message"
+
+# Token (do painel Z-API)
+CLIENT_TOKEN = "4ADA364DCC70ABFE1175200B"
 
 def enviar_mensagem(telefone, texto):
     payload = {
@@ -11,8 +15,8 @@ def enviar_mensagem(telefone, texto):
         "message": texto
     }
     headers = {
-        "Content-Type": "application/json"
-        # NÃO colocar Client-Token aqui!
+        "Content-Type": "application/json",
+        "Client-Token": CLIENT_TOKEN
     }
 
     print(f"📨 Enviando para {telefone}: {texto}")
@@ -20,13 +24,12 @@ def enviar_mensagem(telefone, texto):
     print(f"🔄 Status da resposta: {resposta.status_code}")
     print(f"📬 Conteúdo da resposta: {resposta.text}")
 
-# Teste forçado (depois da definição da função!)
-telefone_teste = "553734490005"
+# Teste forçado
+telefone_teste = "5537998278996"
 texto_teste = "🚀 Teste direto no topo do main.py"
 print("🟢 Executando teste imediato de envio...")
 enviar_mensagem(telefone_teste, texto_teste)
 
-# Endpoint do webhook
 @app.route('/webhook', methods=['POST'])
 def receber_mensagem():
     data = request.json
@@ -48,6 +51,5 @@ def gerar_resposta(msg):
     else:
         return "Estou aqui pra tirar suas dúvidas! Deseja saber como funciona o suplemento ou ver resultados reais?"
 
-# Executa localmente (Render ignora)
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=81)

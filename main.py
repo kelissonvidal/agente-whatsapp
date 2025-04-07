@@ -36,15 +36,13 @@ enviar_mensagem(telefone_teste, texto_teste)
 # Webhook de recebimento
 @app.route('/webhook', methods=['POST'])
 def receber_mensagem():
-    data = request.json
-    msg = data.get('message')
-    telefone = data.get('phone')
-
-    if msg and telefone:
-        resposta = gerar_resposta(msg)
-        enviar_mensagem(telefone, resposta)
-        return jsonify({"status": "mensagem enviada"})
-    return jsonify({"status": "nada recebido"})
+    try:
+        data = request.get_json(force=True)
+        print(f"📥 Webhook recebido: {data}")
+    except Exception as e:
+        print(f"❌ Erro ao processar JSON: {e}")
+        print(f"📦 Conteúdo bruto: {request.data}")
+    return jsonify({"status": "ok"})
 
 def gerar_resposta(msg):
     msg = msg.lower()

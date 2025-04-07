@@ -32,6 +32,9 @@ def enviar_mensagem(telefone, texto):
 
 def gerar_resposta_ia(pergunta):
     try:
+        if not openai.api_key:
+            raise ValueError("A chave OPENAI_API_KEY não está definida no ambiente.")
+
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -50,7 +53,7 @@ def gerar_resposta_ia(pergunta):
         resposta = response['choices'][0]['message']['content']
         return resposta.strip()
     except Exception as e:
-        print(f"Erro ao gerar resposta IA: {e}")
+        print(f"[ERRO IA] Falha ao gerar resposta da OpenAI: {str(e)}")
         return "Desculpe, tivemos um problema ao gerar a resposta. Pode repetir a pergunta?"
 
 @app.route('/webhook', methods=['POST'])
@@ -61,6 +64,7 @@ def receber_mensagem():
     enviado_por_mim = data.get('fromMe', False)
 
     if msg and telefone and not enviado_por_mim:
+        print(f"📩 Mensagem recebida: {msg} de {telefone}")
         resposta = gerar_resposta_ia(msg)
         enviar_mensagem(telefone, resposta)
         return jsonify({"status": "mensagem enviada"})

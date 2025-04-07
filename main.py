@@ -1,17 +1,17 @@
+
 from flask import Flask, request, jsonify
 import requests
 
 app = Flask(__name__)
 
-# Dados reais da sua instância
+# Configurações da instância Z-API
 INSTANCE_ID = "3DF189F728F4A0C2E72632C54B267657"
 TOKEN = "4ADA364DCC70ABFE1175200B"
 CLIENT_TOKEN = "F9d86342bfd3d40e3b8a22ca73cfe9877S"
 
-# URL correta com endpoint /send-text
 API_URL = f"https://api.z-api.io/instances/{INSTANCE_ID}/token/{TOKEN}/send-text"
 
-# Função para enviar mensagem
+# Função para enviar mensagens
 def enviar_mensagem(telefone, texto):
     payload = {
         "phone": telefone,
@@ -27,34 +27,21 @@ def enviar_mensagem(telefone, texto):
     print(f"🔄 Status da resposta: {resposta.status_code}")
     print(f"📬 Conteúdo da resposta: {resposta.text}")
 
-# Teste imediato
-telefone_teste = "5537998278996"
-texto_teste = "🚀 Teste direto com webhook e endpoint corrigido"
-print("🟢 Executando teste imediato de envio...")
-enviar_mensagem(telefone_teste, texto_teste)
-
-# Webhook corrigido com base no retorno da Z-API
+# Webhook para receber mensagens
 @app.route('/webhook', methods=['POST'])
 def receber_mensagem():
     data = request.json
     msg = data.get('text', {}).get('message')
     telefone = data.get('phone')
-    from_me = data.get('fromMe', False)
+    enviado_por_mim = data.get('fromMe', False)
 
-    # Não responde mensagens enviadas pela própria instância
-    if from_me:
-        print("🚫 Mensagem enviada pela instância, ignorando...")
-        return jsonify({"status": "ignorado"})
-
-    if msg and telefone:
+    if msg and telefone and not enviado_por_mim:
         resposta = gerar_resposta(msg)
         enviar_mensagem(telefone, resposta)
         return jsonify({"status": "mensagem enviada"})
-
     return jsonify({"status": "nada recebido"})
 
-
-# Respostas automáticas
+# Geração de respostas automáticas
 def gerar_resposta(msg):
     msg = msg.lower()
     if "oi" in msg or "olá" in msg:
@@ -64,6 +51,10 @@ def gerar_resposta(msg):
     else:
         return "Estou aqui pra tirar suas dúvidas! Deseja saber como funciona o suplemento ou ver resultados reais?"
 
-# Executa localmente
+# Teste inicial automático
 if __name__ == "__main__":
+    telefone_teste = "5537998278996"
+    texto_teste = "🚀 Teste direto com todas as correções aplicadas"
+    print("🟢 Executando teste imediato de envio...")
+    enviar_mensagem(telefone_teste, texto_teste)
     app.run(host='0.0.0.0', port=81)

@@ -1,3 +1,4 @@
+
 from flask import Flask, request, jsonify
 import requests
 import openai
@@ -11,8 +12,8 @@ TOKEN = "4ADA364DCC70ABFE1175200B"
 CLIENT_TOKEN = "F9d86342bfd3d40e3b8a22ca73cfe9877S"
 API_URL = f"https://api.z-api.io/instances/{INSTANCE_ID}/token/{TOKEN}/send-text"
 
-# Configuração da API da OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY", "sua_nova_chave_aqui")
+# Chave da OpenAI vinda da variável de ambiente
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 def enviar_mensagem(telefone, texto):
     payload = {
@@ -34,11 +35,10 @@ def receber_mensagem():
     data = request.json
     msg = data.get('text', {}).get('message')
     telefone = data.get('phone')
-    is_me = data.get('fromMe', False)
+    enviado_por_mim = data.get('fromMe', False)
 
-    print(f"📥 Mensagem recebida: {msg} de {telefone}")
-
-    if msg and telefone and not is_me:
+    if msg and telefone and not enviado_por_mim:
+        print(f"📥 Mensagem recebida: {msg} de {telefone}")
         resposta = gerar_resposta(msg)
         enviar_mensagem(telefone, resposta)
         return jsonify({"status": "mensagem enviada"})
@@ -50,8 +50,21 @@ def gerar_resposta(pergunta):
         resposta = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "Você é um atendente simpático da empresa KVP Suplementos. Responda de forma breve, natural e objetiva sobre o suplemento para tratamento capilar."},
-                {"role": "user", "content": pergunta}
+                {
+                    "role": "system",
+                    "content": (
+                        "Você é um atendente comercial experiente e simpático da empresa KVP Suplementos. "
+                        "Seu papel é atender leads que vieram de anúncios no Facebook, tirar dúvidas com clareza, "
+                        "ser amigável e humano, apresentar os benefícios do suplemento para tratamento capilar, "
+                        "recomendar produtos de forma natural e oferecer o link de pagamento somente quando o cliente "
+                        "estiver pronto para comprar. Responda com um tom acolhedor, como se fosse uma conversa real no WhatsApp. "
+                        "Evite linguagem robótica ou respostas automáticas genéricas. Aja como uma pessoa real, com empatia e foco na conversão."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": pergunta
+                }
             ],
             temperature=0.7
         )
@@ -60,10 +73,5 @@ def gerar_resposta(pergunta):
         print("[ERRO IA] Falha ao gerar resposta da OpenAI:", e)
         return "Desculpe, tivemos um problema ao gerar a resposta. Pode repetir a pergunta?"
 
-# Teste imediato (opcional para debug)
 if __name__ == "__main__":
-    telefone_teste = "5537998278996"
-    texto_teste = "🚀 Teste direto com a versão atualizada da OpenAI"
-    print("🟢 Executando teste imediato de envio...")
-    enviar_mensagem(telefone_teste, texto_teste)
     app.run(host='0.0.0.0', port=10000)

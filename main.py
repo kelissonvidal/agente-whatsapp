@@ -39,12 +39,20 @@ def receber_mensagem():
     data = request.json
     msg = data.get('text', {}).get('message')
     telefone = data.get('phone')
-    
+    from_me = data.get('fromMe', False)
+
+    # Não responde mensagens enviadas pela própria instância
+    if from_me:
+        print("🚫 Mensagem enviada pela instância, ignorando...")
+        return jsonify({"status": "ignorado"})
+
     if msg and telefone:
         resposta = gerar_resposta(msg)
         enviar_mensagem(telefone, resposta)
         return jsonify({"status": "mensagem enviada"})
+
     return jsonify({"status": "nada recebido"})
+
 
 # Respostas automáticas
 def gerar_resposta(msg):

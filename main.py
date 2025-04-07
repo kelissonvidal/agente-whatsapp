@@ -12,7 +12,7 @@ TOKEN = "4ADA364DCC70ABFE1175200B"
 CLIENT_TOKEN = "F9d86342bfd3d40e3b8a22ca73cfe9877S"
 API_URL = f"https://api.z-api.io/instances/{INSTANCE_ID}/token/{TOKEN}/send-text"
 
-# API Key da OpenAI (usando variável de ambiente)
+# Chave da OpenAI vinda da variável de ambiente
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 def enviar_mensagem(telefone, texto):
@@ -67,8 +67,4 @@ def receber_mensagem():
     return jsonify({"status": "nada recebido"})
 
 if __name__ == "__main__":
-    telefone_teste = "5537998278996"
-    texto_teste = "Olá! Gostaria de saber como funciona o suplemento para queda de cabelo."
-    print("🟢 Executando teste imediato de envio com IA...")
-    enviar_mensagem(telefone_teste, gerar_resposta_ia(texto_teste))
     app.run(host='0.0.0.0', port=81)

@@ -3,16 +3,21 @@ import requests
 
 app = Flask(__name__)
 
-# ✅ SUA URL COMPLETA (com token na URL)
-API_URL = "https://api.z-api.io/instances/3DF189F728F4A0C2E72632C54B267657/token/4ADA364DCC70ABFE1175200B/send-message"
+# Endpoint padrão da Z-API
+API_URL = "https://api.z-api.io/send-message"
 
+# Token correto da aba "Segurança" no painel da instância
+CLIENT_TOKEN = "F9d86342bfd3d40e3b8a22ca73cfe9877S"
+
+# Função para enviar mensagem via Z-API
 def enviar_mensagem(telefone, texto):
     payload = {
         "phone": telefone,
         "message": texto
     }
     headers = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Client-Token": CLIENT_TOKEN
     }
 
     print(f"📨 Enviando para {telefone}: {texto}")
@@ -20,12 +25,13 @@ def enviar_mensagem(telefone, texto):
     print(f"🔄 Status da resposta: {resposta.status_code}")
     print(f"📬 Conteúdo da resposta: {resposta.text}")
 
-# Teste forçado
-telefone_teste = "5537998278996"
-texto_teste = "🚀 Teste agora com URL clássica da Z-API"
+# Teste automático direto no topo do código
+telefone_teste = "553734490005"  # Número do WhatsApp Business conectado à instância
+texto_teste = "🚀 Teste direto com o token da aba Segurança da Z-API"
 print("🟢 Executando teste imediato de envio...")
 enviar_mensagem(telefone_teste, texto_teste)
 
+# Endpoint de Webhook (opcional)
 @app.route('/webhook', methods=['POST'])
 def receber_mensagem():
     data = request.json
@@ -47,5 +53,6 @@ def gerar_resposta(msg):
     else:
         return "Estou aqui pra tirar suas dúvidas! Deseja saber como funciona o suplemento ou ver resultados reais?"
 
+# Executa localmente (ignorado pelo Render)
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=81)

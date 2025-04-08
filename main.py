@@ -1,4 +1,3 @@
-
 from flask import Flask, request, jsonify
 import requests
 import openai
@@ -18,6 +17,9 @@ API_URL = f"https://api.z-api.io/instances/{INSTANCE_ID}/token/{TOKEN}/send-text
 # API da OpenAI
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
+# Registro de últimas interações para evitar repetição de saudação
+ultimo_contato = {}
+
 def saudacao_por_horario():
     hora = datetime.now().hour
     if 5 <= hora < 12:
@@ -28,11 +30,11 @@ def saudacao_por_horario():
         return "Boa noite! 🌙"
 
 introducoes_possiveis = [
-    "Opa, deixa eu te responder certinho…",
-    "Boa pergunta! Me dá só um instante…",
-    "Ah, já te explico… rapidinho…",
-    "Claro! Só um segundinho e te explico tudo.",
-    "Vou te responder já já, beleza?"
+    "Claro, deixa eu te explicar rapidinho…",
+    "Ah, ótimo! Vou te explicar certinho…",
+    "Beleza, me dá só um instante pra te responder bem explicado…",
+    "Ótima dúvida! Já te respondo…",
+    "Show! Vamos lá..."
 ]
 
 def enviar_mensagem(telefone, texto):
@@ -88,24 +90,28 @@ def receber_mensagem():
         print(f"📥 Mensagem recebida: {msg} de {telefone}")
         resposta = gerar_resposta_ia(msg)
 
-        # Saudação com base no horário
-        saudacao = saudacao_por_horario()
-        enviar_mensagem(telefone, saudacao)
-        time.sleep(1.8)
+        agora = time.time()
+        saudacao_enviada = False
 
-        # Introdução aleatória
-        intro = random.choice(introducoes_possiveis)
-        enviar_mensagem(telefone, intro)
-        time.sleep(2.2)
+        if telefone not in ultimo_contato or agora - ultimo_contato[telefone] > 300:
+            saudacao = saudacao_por_horario()
+            enviar_mensagem(telefone, saudacao)
+            saudacao_enviada = True
+            time.sleep(1.6)
 
-        # Envio segmentado com pausa
-        if len(resposta) > 300:
-            partes = [resposta[i:i+300] for i in range(0, len(resposta), 300)]
-            for parte in partes:
-                enviar_mensagem(telefone, parte.strip())
-                time.sleep(2)
-        else:
-            enviar_mensagem(telefone, resposta)
+        ultimo_contato[telefone] = agora
+
+        # Introdução aleatória apenas se saudação foi enviada
+        if saudacao_enviada:
+            intro = random.choice(introducoes_possiveis)
+            enviar_mensagem(telefone, intro)
+            time.sleep(2.2)
+
+        # Envio frase por frase
+        frases = [f.strip() for f in resposta.split('.') if f.strip()]
+        for frase in frases:
+            enviar_mensagem(telefone, frase + '.')
+            time.sleep(random.uniform(1.8, 2.6))
 
         return jsonify({"status": "mensagem enviada"})
 

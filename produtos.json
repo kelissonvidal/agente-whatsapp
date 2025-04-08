@@ -1,0 +1,14 @@
+[
+  {
+    "nome": "HairForce Plus",
+    "descricao": "Suplemento vitamínico para fortalecimento capilar.",
+    "preco": 120.00,
+    "link_pagamento": "https://pagamento.com/hairforceplus"
+  },
+  {
+    "nome": "Dermavit Complex",
+    "descricao": "Complexo vitamínico para saúde da pele e cabelos.",
+    "preco": 150.00,
+    "link_pagamento": "https://pagamento.com/dermavitcomplex"
+  }
+]

@@ -18,7 +18,8 @@ API_URL = f"https://api.z-api.io/instances/{INSTANCE_ID}/token/{TOKEN}/send-text
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 # Links dos arquivos (substitua pelo seu repositório real futuramente)
-GITHUB_BASE = "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPOSITORIO/main/"
+GITHUB_BASE = "https://raw.githubusercontent.com/kelissonvidal/agente-whatsapp/main/"
+
 URL_CONTEXTO = GITHUB_BASE + "contexto.txt"
 URL_INSTRUCOES = GITHUB_BASE + "instrucoes.txt"
 

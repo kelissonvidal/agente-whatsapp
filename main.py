@@ -17,7 +17,7 @@ API_URL = f"https://api.z-api.io/instances/{INSTANCE_ID}/token/{TOKEN}/send-text
 # API da OpenAI
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
-# Registro de últimas interações para evitar repetição de saudação
+# Controle de saudação
 ultimo_contato = {}
 
 def saudacao_por_horario():
@@ -79,6 +79,22 @@ def gerar_resposta_ia(pergunta):
         print("[ERRO IA] Falha ao gerar resposta da OpenAI:", e)
         return "Desculpe, tivemos um problema ao gerar a resposta. Pode repetir a pergunta?"
 
+def dividir_em_blocos(texto, limite_palavras=12):
+    palavras = texto.split()
+    blocos = []
+    bloco = []
+
+    for palavra in palavras:
+        bloco.append(palavra)
+        if len(bloco) >= limite_palavras and '.' in palavra:
+            blocos.append(' '.join(bloco).strip())
+            bloco = []
+
+    if bloco:
+        blocos.append(' '.join(bloco).strip())
+
+    return blocos
+
 @app.route('/webhook', methods=['POST'])
 def receber_mensagem():
     data = request.json
@@ -101,17 +117,15 @@ def receber_mensagem():
 
         ultimo_contato[telefone] = agora
 
-        # Introdução aleatória apenas se saudação foi enviada
         if saudacao_enviada:
             intro = random.choice(introducoes_possiveis)
             enviar_mensagem(telefone, intro)
             time.sleep(2.2)
 
-        # Envio frase por frase
-        frases = [f.strip() for f in resposta.split('.') if f.strip()]
-        for frase in frases:
-            enviar_mensagem(telefone, frase + '.')
-            time.sleep(random.uniform(1.8, 2.6))
+        blocos = dividir_em_blocos(resposta)
+        for trecho in blocos:
+            enviar_mensagem(telefone, trecho)
+            time.sleep(random.uniform(1.8, 2.5))
 
         return jsonify({"status": "mensagem enviada"})
 

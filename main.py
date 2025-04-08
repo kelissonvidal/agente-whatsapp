@@ -4,6 +4,8 @@ import requests
 import openai
 import os
 import time
+import random
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -13,8 +15,25 @@ TOKEN = "4ADA364DCC70ABFE1175200B"
 CLIENT_TOKEN = "F9d86342bfd3d40e3b8a22ca73cfe9877S"
 API_URL = f"https://api.z-api.io/instances/{INSTANCE_ID}/token/{TOKEN}/send-text"
 
-# API da OpenAI (GPT-3.5 Turbo)
+# API da OpenAI
 openai.api_key = os.environ.get("OPENAI_API_KEY")
+
+def saudacao_por_horario():
+    hora = datetime.now().hour
+    if 5 <= hora < 12:
+        return "Bom dia! ☀️"
+    elif 12 <= hora < 18:
+        return "Boa tarde! ☀️"
+    else:
+        return "Boa noite! 🌙"
+
+introducoes_possiveis = [
+    "Opa, deixa eu te responder certinho…",
+    "Boa pergunta! Me dá só um instante…",
+    "Ah, já te explico… rapidinho…",
+    "Claro! Só um segundinho e te explico tudo.",
+    "Vou te responder já já, beleza?"
+]
 
 def enviar_mensagem(telefone, texto):
     payload = {
@@ -69,11 +88,17 @@ def receber_mensagem():
         print(f"📥 Mensagem recebida: {msg} de {telefone}")
         resposta = gerar_resposta_ia(msg)
 
-        # Simulação de atendimento humanizado
-        introducao = "Claro, me dá só um segundinho pra te responder direitinho…"
-        enviar_mensagem(telefone, introducao)
-        time.sleep(3)
+        # Saudação com base no horário
+        saudacao = saudacao_por_horario()
+        enviar_mensagem(telefone, saudacao)
+        time.sleep(1.8)
 
+        # Introdução aleatória
+        intro = random.choice(introducoes_possiveis)
+        enviar_mensagem(telefone, intro)
+        time.sleep(2.2)
+
+        # Envio segmentado com pausa
         if len(resposta) > 300:
             partes = [resposta[i:i+300] for i in range(0, len(resposta), 300)]
             for parte in partes:
@@ -81,6 +106,7 @@ def receber_mensagem():
                 time.sleep(2)
         else:
             enviar_mensagem(telefone, resposta)
+
         return jsonify({"status": "mensagem enviada"})
 
     return jsonify({"status": "nada recebido"})

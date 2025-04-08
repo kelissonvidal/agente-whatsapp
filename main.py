@@ -4,7 +4,6 @@ import openai
 import os
 import time
 import random
-from datetime import datetime
 
 app = Flask(__name__)
 
@@ -16,26 +15,6 @@ API_URL = f"https://api.z-api.io/instances/{INSTANCE_ID}/token/{TOKEN}/send-text
 
 # API da OpenAI
 openai.api_key = os.environ.get("OPENAI_API_KEY")
-
-# Controle de saudação
-ultimo_contato = {}
-
-def saudacao_por_horario():
-    hora = datetime.now().hour
-    if 5 <= hora < 12:
-        return "Bom dia! ☀️"
-    elif 12 <= hora < 18:
-        return "Boa tarde! ☀️"
-    else:
-        return "Boa noite! 🌙"
-
-introducoes_possiveis = [
-    "Claro, deixa eu te explicar rapidinho…",
-    "Ah, ótimo! Vou te explicar certinho…",
-    "Beleza, me dá só um instante pra te responder bem explicado…",
-    "Ótima dúvida! Já te respondo…",
-    "Show! Vamos lá..."
-]
 
 def enviar_mensagem(telefone, texto):
     payload = {
@@ -105,22 +84,6 @@ def receber_mensagem():
     if msg and telefone and not enviado_por_mim:
         print(f"📥 Mensagem recebida: {msg} de {telefone}")
         resposta = gerar_resposta_ia(msg)
-
-        agora = time.time()
-        saudacao_enviada = False
-
-        if telefone not in ultimo_contato or agora - ultimo_contato[telefone] > 300:
-            saudacao = saudacao_por_horario()
-            enviar_mensagem(telefone, saudacao)
-            saudacao_enviada = True
-            time.sleep(1.6)
-
-        ultimo_contato[telefone] = agora
-
-        if saudacao_enviada:
-            intro = random.choice(introducoes_possiveis)
-            enviar_mensagem(telefone, intro)
-            time.sleep(2.2)
 
         blocos = dividir_em_blocos(resposta)
         for trecho in blocos:

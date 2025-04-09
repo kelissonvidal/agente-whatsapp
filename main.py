@@ -1,131 +1,122 @@
-import os
-import time
-import random
-import requests
+
 from flask import Flask, request, jsonify
-from datetime import datetime
-from openai import OpenAI
-from urllib.parse import quote
+import requests
+import time
+import openai
+import os
 
 app = Flask(__name__)
 
 # Configurações da API Z-API
-ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID", "3DF189F728F4A0C2E72632C54B267657")
-ZAPI_TOKEN = os.getenv("ZAPI_TOKEN", "4ADA364DCC70ABFE1175200B")
-ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN", "F9d86342bfd3d40e3b8a22ca73cfe9877S")
-ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
+INSTANCE_ID = "3DF189F728F4A0C2E72632C54B267657"
+TOKEN = "4ADA364DCC70ABFE1175200B"
+CLIENT_TOKEN = "F9d86342bfd3d40e3b8a22ca73cfe9877S"
+ZAPI_URL = f"https://api.z-api.io/instances/{INSTANCE_ID}/token/{TOKEN}"
 
-# Controle de mensagens recebidas para envio de boas-vindas uma única vez
-usuarios_ja_saudados = set()
-
-# Cliente OpenAI
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
-
-# Arquivo com conteúdo do funil
-def carregar_contexto():
-    try:
-        url = "https://raw.githubusercontent.com/kelissonvidal/agente-whatsapp/main/data/funil_caplux.md"
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.text.strip()
-    except Exception as e:
-        print("[ERRO CONTEXTO]", e)
-        return ""
-
-contexto_geral = carregar_contexto()
-
-# Função de geração de resposta
-def gerar_resposta(pergunta):
-    try:
-        resposta = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Você é um atendente de vendas simpático, humano e natural da empresa Caplux Suplementos. Use o conteúdo fornecido como base para conversar com clientes via WhatsApp. Evite respostas longas, e responda com linguagem informal e amigável."},
-                {"role": "user", "content": f"{contexto_geral}\n\nPergunta do cliente: {pergunta}"}
-            ],
-            temperature=0.7,
-        )
-        return resposta.choices[0].message.content.strip()
-    except Exception as e:
-        print("[ERRO IA]", e)
-        return "Desculpe, tivemos um problema ao gerar a resposta. Pode repetir a pergunta?"
-
-# Função de envio de mensagem via Z-API
-def enviar_mensagem(numero, mensagem):
+# Envia áudio de boas-vindas (arquivo .ogg hospedado no GitHub)
+def enviar_audio_boas_vindas(telefone):
+    url = f"{ZAPI_URL}/send-audio"
     payload = {
-        "phone": numero,
+        "phone": telefone,
+        "audio": "https://raw.githubusercontent.com/kelissonvidal/agente-whatsapp/main/data/boas_vindas.ogg"
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Client-Token": CLIENT_TOKEN
+    }
+    requests.post(url, json=payload, headers=headers)
+
+# Envia mensagem de texto
+def enviar_mensagem(telefone, mensagem):
+    url = f"{ZAPI_URL}/send-text"
+    payload = {
+        "phone": telefone,
         "message": mensagem
     }
     headers = {
         "Content-Type": "application/json",
-        "Client-Token": ZAPI_CLIENT_TOKEN
+        "Client-Token": CLIENT_TOKEN
     }
-    response = requests.post(ZAPI_URL, json=payload, headers=headers)
-    print("Status da resposta:", response.status_code)
-    print("Conteúdo da resposta:", response.text)
+    requests.post(url, json=payload, headers=headers)
 
-# Função de envio de áudio via link do GitHub
-def enviar_audio(numero):
-    url_ogg = "https://raw.githubusercontent.com/kelissonvidal/agente-whatsapp/main/data/boas_vindas.ogg"
-    payload = {
-        "phone": numero,
-        "audio": url_ogg
-    }
-    headers = {
-        "Content-Type": "application/json",
-        "Client-Token": ZAPI_CLIENT_TOKEN
-    }
-    response = requests.post(
-        f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-audio",
-        json=payload,
-        headers=headers
-    )
-    print("Áudio enviado:", response.status_code, response.text)
+# Transcreve o áudio recebido
+def transcrever_audio(url_audio):
+    try:
+        audio_response = requests.get(url_audio)
+        with open("temp_audio.ogg", "wb") as f:
+            f.write(audio_response.content)
 
-# Webhook de recebimento
-@app.route('/webhook', methods=['POST'])
+        with open("temp_audio.ogg", "rb") as audio_file:
+            transcript = openai.Audio.transcribe("whisper-1", audio_file)
+        os.remove("temp_audio.ogg")
+        return transcript["text"]
+    except Exception as e:
+        print(f"[ERRO TRANSCRIÇÃO] {e}")
+        return None
+
+# Gera resposta com base na IA (utiliza conteúdo do GitHub)
+def gerar_resposta(pergunta):
+    try:
+        url_conhecimento = "https://raw.githubusercontent.com/kelissonvidal/agente-whatsapp/main/data/funil_caplux.md"
+        base = requests.get(url_conhecimento).text
+
+        resposta = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": base},
+                {"role": "user", "content": pergunta}
+            ]
+        )
+        texto = resposta.choices[0].message.content.strip()
+        return texto
+    except Exception as e:
+        print("[ERRO IA]", e)
+        return "Desculpe, tivemos um problema ao gerar a resposta. Pode repetir a pergunta?"
+
+# Webhook da Z-API
+@app.route("/webhook", methods=["POST"])
 def receber_mensagem():
     data = request.json
-    msg = data.get('text', {}).get('message')
-    telefone = data.get('phone')
-    from_me = data.get('fromMe', False)
+    telefone = data.get("phone")
+    from_me = data.get("fromMe", False)
+    msg = data.get("text", {}).get("message")
+    msg_type = data.get("type")
+    audio_url = data.get("audio", {}).get("url")
 
-    if not msg or not telefone or from_me:
+    if not telefone or from_me:
         return jsonify({"status": "ignorado"})
 
-    print("📨 Mensagem recebida:", msg, "de", telefone)
+    if msg_type == "audio" and audio_url:
+        msg = transcrever_audio(audio_url)
 
-    # Verifica se é a primeira mensagem
-    if telefone not in usuarios_ja_saudados:
-        usuarios_ja_saudados.add(telefone)
-        enviar_audio(telefone)
-        time.sleep(1)
+    if msg:
+        if msg.lower() in ["oi", "olá", "bom dia", "boa tarde", "boa noite"]:
+            enviar_audio_boas_vindas(telefone)
+            return jsonify({"status": "audio enviado"})
 
-    resposta = gerar_resposta(msg)
-    partes = dividir_resposta(resposta)
+        resposta = gerar_resposta(msg)
+        blocos = dividir_mensagem_em_blocos(resposta)
+        for bloco in blocos:
+            enviar_mensagem(telefone, bloco)
+            time.sleep(1.5)
 
-    for parte in partes:
-        enviar_mensagem(telefone, parte)
-        time.sleep(random.uniform(1.2, 2.2))
+    return jsonify({"status": "mensagem processada"})
 
-    return jsonify({"status": "mensagem enviada"})
-
-def dividir_resposta(texto):
+def dividir_mensagem_em_blocos(texto, max_palavras=12):
     palavras = texto.split()
     blocos = []
     bloco = []
+
     for palavra in palavras:
         bloco.append(palavra)
-        if len(bloco) >= 12 and palavra.endswith("."):
+        if len(bloco) >= max_palavras and palavra.endswith((".", "!", "?", "…")):
             blocos.append(" ".join(bloco))
             bloco = []
+
     if bloco:
         blocos.append(" ".join(bloco))
+
     return blocos
 
-@app.route('/')
-def index():
-    return 'Agente WhatsApp ativo!'
-
-if __name__ == '__main__':
-    app.run(port=10000, debug=True)
+if __name__ == "__main__":
+    app.run(debug=True)

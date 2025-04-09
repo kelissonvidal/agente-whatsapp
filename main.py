@@ -13,7 +13,7 @@ CLIENT_TOKEN = "YOUR_CLIENT_TOKEN"
 clientes_com_audio_enviado = {}
 
 def enviar_audio_boas_vindas(telefone):
-    caminho_audio = "boas_vindas.ogg"
+    caminho_audio = "data/boas_vindas.ogg"
     if not os.path.exists(caminho_audio):
         print("[ERRO] Arquivo de áudio não encontrado.")
         return

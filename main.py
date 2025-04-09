@@ -1,122 +1,73 @@
 
 from flask import Flask, request, jsonify
 import requests
-import time
-import openai
 import os
+import time
 
 app = Flask(__name__)
 
-# Configurações da API Z-API
-INSTANCE_ID = "3DF189F728F4A0C2E72632C54B267657"
-TOKEN = "4ADA364DCC70ABFE1175200B"
-CLIENT_TOKEN = "F9d86342bfd3d40e3b8a22ca73cfe9877S"
-ZAPI_URL = f"https://api.z-api.io/instances/{INSTANCE_ID}/token/{TOKEN}"
+ZAPI_URL = "https://api.z-api.io/instances/YOUR_INSTANCE_ID/token/YOUR_INSTANCE_TOKEN"
+CLIENT_TOKEN = "YOUR_CLIENT_TOKEN"
 
-# Envia áudio de boas-vindas (arquivo .ogg hospedado no GitHub)
+# Variável para armazenar se o áudio já foi enviado para cada cliente
+clientes_com_audio_enviado = {}
+
 def enviar_audio_boas_vindas(telefone):
+    caminho_audio = "boas_vindas.ogg"
+    if not os.path.exists(caminho_audio):
+        print("[ERRO] Arquivo de áudio não encontrado.")
+        return
+
     url = f"{ZAPI_URL}/send-audio"
-    payload = {
-        "phone": telefone,
-        "audio": "https://raw.githubusercontent.com/kelissonvidal/agente-whatsapp/main/data/boas_vindas.ogg"
-    }
+    with open(caminho_audio, 'rb') as audio_file:
+        files = {'audio': audio_file}
+        data = {'phone': telefone}
+        headers = {'Client-Token': CLIENT_TOKEN}
+        response = requests.post(url, data=data, files=files, headers=headers)
+        print("Enviando áudio de boas-vindas:", response.text)
+
+def enviar_mensagem(telefone, mensagem):
+    url = f"{ZAPI_URL}/send-text"
     headers = {
         "Content-Type": "application/json",
         "Client-Token": CLIENT_TOKEN
     }
-    requests.post(url, json=payload, headers=headers)
-
-# Envia mensagem de texto
-def enviar_mensagem(telefone, mensagem):
-    url = f"{ZAPI_URL}/send-text"
     payload = {
         "phone": telefone,
         "message": mensagem
     }
-    headers = {
-        "Content-Type": "application/json",
-        "Client-Token": CLIENT_TOKEN
-    }
-    requests.post(url, json=payload, headers=headers)
+    response = requests.post(url, headers=headers, json=payload)
+    print("Status da resposta:", response.status_code)
+    print("Conteúdo da resposta:", response.text)
 
-# Transcreve o áudio recebido
-def transcrever_audio(url_audio):
-    try:
-        audio_response = requests.get(url_audio)
-        with open("temp_audio.ogg", "wb") as f:
-            f.write(audio_response.content)
-
-        with open("temp_audio.ogg", "rb") as audio_file:
-            transcript = openai.Audio.transcribe("whisper-1", audio_file)
-        os.remove("temp_audio.ogg")
-        return transcript["text"]
-    except Exception as e:
-        print(f"[ERRO TRANSCRIÇÃO] {e}")
-        return None
-
-# Gera resposta com base na IA (utiliza conteúdo do GitHub)
-def gerar_resposta(pergunta):
-    try:
-        url_conhecimento = "https://raw.githubusercontent.com/kelissonvidal/agente-whatsapp/main/data/funil_caplux.md"
-        base = requests.get(url_conhecimento).text
-
-        resposta = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": base},
-                {"role": "user", "content": pergunta}
-            ]
-        )
-        texto = resposta.choices[0].message.content.strip()
-        return texto
-    except Exception as e:
-        print("[ERRO IA]", e)
-        return "Desculpe, tivemos um problema ao gerar a resposta. Pode repetir a pergunta?"
-
-# Webhook da Z-API
 @app.route("/webhook", methods=["POST"])
-def receber_mensagem():
+def webhook():
     data = request.json
     telefone = data.get("phone")
-    from_me = data.get("fromMe", False)
-    msg = data.get("text", {}).get("message")
-    msg_type = data.get("type")
-    audio_url = data.get("audio", {}).get("url")
+    mensagem_texto = data.get("text", {}).get("message")
+    mensagem_audio = data.get("audio", {}).get("url")
+    from_me = data.get("fromMe", True)
 
-    if not telefone or from_me:
-        return jsonify({"status": "ignorado"})
-
-    if msg_type == "audio" and audio_url:
-        msg = transcrever_audio(audio_url)
-
-    if msg:
-        if msg.lower() in ["oi", "olá", "bom dia", "boa tarde", "boa noite"]:
+    if telefone and not from_me:
+        if telefone not in clientes_com_audio_enviado:
             enviar_audio_boas_vindas(telefone)
-            return jsonify({"status": "audio enviado"})
+            clientes_com_audio_enviado[telefone] = True
+            return jsonify({"status": "áudio enviado"})
 
-        resposta = gerar_resposta(msg)
-        blocos = dividir_mensagem_em_blocos(resposta)
-        for bloco in blocos:
-            enviar_mensagem(telefone, bloco)
-            time.sleep(1.5)
+        if mensagem_texto:
+            resposta = gerar_resposta(mensagem_texto)
+            enviar_mensagem(telefone, resposta)
+            return jsonify({"status": "mensagem enviada"})
 
-    return jsonify({"status": "mensagem processada"})
+        elif mensagem_audio:
+            resposta = "Recebi seu áudio! Me dá só um instante que já te respondo direitinho, tá bom?"
+            enviar_mensagem(telefone, resposta)
+            return jsonify({"status": "áudio recebido"})
 
-def dividir_mensagem_em_blocos(texto, max_palavras=12):
-    palavras = texto.split()
-    blocos = []
-    bloco = []
+    return jsonify({"status": "nada processado"})
 
-    for palavra in palavras:
-        bloco.append(palavra)
-        if len(bloco) >= max_palavras and palavra.endswith((".", "!", "?", "…")):
-            blocos.append(" ".join(bloco))
-            bloco = []
-
-    if bloco:
-        blocos.append(" ".join(bloco))
-
-    return blocos
+def gerar_resposta(mensagem):
+    return "Me dá só um segundinho que já vou te responder direitinho, tá?"
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=10000)

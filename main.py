@@ -16,8 +16,6 @@ API_URL = f"https://api.z-api.io/instances/{INSTANCE_ID}/token/{TOKEN}"
 AUDIO_BOAS_VINDAS = "./audios/boas_vindas.ogg"
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
-
-openai.api_key = OPENAI_API_KEY
 USERS_RESPONDED = set()
 
 # Envio de áudio inicial

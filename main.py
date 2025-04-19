@@ -1,3 +1,4 @@
+
 import os
 import requests
 from flask import Flask, request, jsonify
@@ -6,72 +7,70 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = Flask(__name__)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
 ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN")
-ZAPI_BASE_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-HEADERS = {
-    "Client-Token": ZAPI_CLIENT_TOKEN
-}
+openai = OpenAI(api_key=OPENAI_API_KEY)
 
-AUDIO_LINKS = {
-    "boas_vindas": "https://raw.githubusercontent.com/kelissonvidal/caplux-audios/main/boas_vindas.ogg",
-    "formas_pagamento": "https://raw.githubusercontent.com/kelissonvidal/caplux-audios/main/formas_pagamento.ogg",
-    "garantia": "https://raw.githubusercontent.com/kelissonvidal/caplux-audios/main/garantia.ogg",
-    "prazo_entrega": "https://raw.githubusercontent.com/kelissonvidal/caplux-audios/main/prazo_entrega.ogg",
-}
+app = Flask(__name__)
 
-def enviar_audio_para_whatsapp(phone, audio_url):
-    url = f"{ZAPI_BASE_URL}/audio/send-from-url"
-    payload = {
-        "phone": phone,
-        "audio": audio_url
-    }
-    response = requests.post(url, json=payload, headers=HEADERS)
-    return response
+URL_AUDIO = "https://raw.githubusercontent.com/kelissonvidal/caplux-audios/main/boas_vindas.ogg"
 
-def enviar_mensagem_para_whatsapp(phone, mensagem):
-    url = f"{ZAPI_BASE_URL}/send-text"
-    payload = {
-        "phone": phone,
-        "message": mensagem
-    }
-    response = requests.post(url, json=payload, headers=HEADERS)
-    return response
+def enviar_audio(numero, link_audio):
+    url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-audio"
+    headers = {"Client-Token": ZAPI_CLIENT_TOKEN}
+    payload = {"phone": numero, "audio": link_audio}
+    response = requests.post(url, json=payload, headers=headers)
+    return response.status_code, response.json()
+
+def enviar_texto(numero, mensagem):
+    url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
+    headers = {"Client-Token": ZAPI_CLIENT_TOKEN}
+    payload = {"phone": numero, "message": mensagem}
+    response = requests.post(url, json=payload, headers=headers)
+    return response.status_code, response.json()
+
+def transcrever_audio(url_audio):
+    response = requests.get(url_audio)
+    with open("/tmp/audio.ogg", "wb") as f:
+        f.write(response.content)
+    with open("/tmp/audio.ogg", "rb") as audio_file:
+        transcript = openai.audio.transcriptions.create(model="whisper-1", file=audio_file)
+    return transcript.text
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    payload = request.get_json()
+    data = request.get_json()
 
-    if payload.get("type") == "ReceivedCallback" and not payload.get("fromApi", False):
-        phone = payload.get("phone")
-        message = payload.get("text", {}).get("message", "").lower()
+    if not data:
+        return jsonify({"error": "Payload inválido"}), 400
 
-        if message:
-            if "forma de pagamento" in message or "formas de pagamento" in message:
-                enviar_audio_para_whatsapp(phone, AUDIO_LINKS["formas_pagamento"])
-            elif "garantia" in message:
-                enviar_audio_para_whatsapp(phone, AUDIO_LINKS["garantia"])
-            elif "prazo" in message or "entrega" in message:
-                enviar_audio_para_whatsapp(phone, AUDIO_LINKS["prazo_entrega"])
-            else:
-                resposta = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "Você é um atendente simpático e prestativo."},
-                        {"role": "user", "content": message}
-                    ]
-                )
-                texto_ia = resposta.choices[0].message.content.strip()
-                enviar_mensagem_para_whatsapp(phone, texto_ia)
+    tipo = data.get("type")
+    telefone = data.get("phone")
 
-            enviar_audio_para_whatsapp(phone, AUDIO_LINKS["boas_vindas"])
+    # Ignorar mensagens enviadas pela própria IA
+    if data.get("fromMe"):
+        return jsonify({"status": "ignorado"}), 200
 
-    return jsonify({"status": "ok"})
+    if tipo == "ReceivedCallback":
+        if "audio" in data:
+            try:
+                url_audio = data["audio"]["audioUrl"]
+                texto = transcrever_audio(url_audio)
+                resposta = f"Você disse: {texto}"
+                enviar_texto(telefone, resposta)
+            except Exception as e:
+                print("Erro ao transcrever:", e)
+        elif "text" in data:
+            msg = data["text"]["message"]
+            if msg.lower() in ["oi", "olá", "bom dia", "boa tarde", "boa noite"]:
+                enviar_audio(telefone, URL_AUDIO)
+            resposta = "Olá! Como posso te ajudar hoje?"
+            enviar_texto(telefone, resposta)
+
+    return jsonify({"status": "ok"}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)

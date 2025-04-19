@@ -1,117 +1,178 @@
 
+from flask import Flask, request
 import os
 import requests
-import time
-from flask import Flask, request, jsonify
-from openai import OpenAI
-from dotenv import load_dotenv
+import openai
+import aiohttp
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
-load_dotenv()
+app = Flask(__name__)
 
+# Ambiente
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
 ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
 
-openai = OpenAI(api_key=OPENAI_API_KEY)
+# Configurações
+API_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}"
+PASTA_AUDIOS = "https://raw.githubusercontent.com/kelissonvidal/caplux-audios/main/"
+USERS_RESPONDED = set()
+executor = ThreadPoolExecutor()
 
-app = Flask(__name__)
+# === UTILITÁRIOS ===
 
-URL_AUDIO = "https://raw.githubusercontent.com/kelissonvidal/caplux-audios/main/boas_vindas.ogg"
-
-def enviar_audio(numero, link_audio):
-    url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-audio"
-    headers = {"Client-Token": ZAPI_CLIENT_TOKEN}
-    payload = {"phone": numero, "audio": link_audio}
-    response = requests.post(url, json=payload, headers=headers)
-    return response.status_code, response.json()
-
-def enviar_texto(numero, mensagem):
-    url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
-    headers = {"Client-Token": ZAPI_CLIENT_TOKEN}
-    payload = {"phone": numero, "message": mensagem}
-    response = requests.post(url, json=payload, headers=headers)
-    return response.status_code, response.json()
-
-def dividir_blocos(texto, limite=12):
+def dividir_em_blocos(texto, tamanho_minimo=12):
     palavras = texto.split()
     blocos = []
-    bloco_atual = []
+    bloco = []
 
     for palavra in palavras:
-        bloco_atual.append(palavra)
-        if len(bloco_atual) >= limite and palavra.endswith((".", "!", "?")):
-            blocos.append(" ".join(bloco_atual))
-            bloco_atual = []
+        bloco.append(palavra)
+        if len(bloco) >= tamanho_minimo and any(p in palavra for p in [".", "!", "?"]):
+            blocos.append(" ".join(bloco))
+            bloco = []
 
-    if bloco_atual:
-        blocos.append(" ".join(bloco_atual))
+    if bloco:
+        blocos.append(" ".join(bloco))
 
     return blocos
 
 def delay_por_bloco(bloco):
-    palavras = len(bloco.split())
-    if palavras <= 8:
+    palavras = bloco.split()
+    qtd = len(palavras)
+
+    if qtd <= 8:
         return 2
-    elif palavras <= 12:
+    elif qtd <= 12:
         return 3
-    else:
+    elif qtd <= 18:
         return 4
+    else:
+        return 5
 
-def responder_com_blocos(numero, resposta):
-    blocos = dividir_blocos(resposta)
-    for bloco in blocos:
-        enviar_texto(numero, bloco)
-        time.sleep(delay_por_bloco(bloco))
+async def delay_seguro(segundos):
+    await asyncio.sleep(segundos)
 
-def transcrever_audio(url_audio):
-    response = requests.get(url_audio)
-    with open("/tmp/audio.ogg", "wb") as f:
-        f.write(response.content)
-    with open("/tmp/audio.ogg", "rb") as audio_file:
-        transcript = openai.audio.transcriptions.create(model="whisper-1", file=audio_file)
-    return transcript.text
+def send_text(phone, message):
+    url = f"{API_URL}/send-text"
+    headers = {
+        "Content-Type": "application/json",
+        "Client-Token": ZAPI_CLIENT_TOKEN
+    }
+    payload = {
+        "phone": phone,
+        "message": message
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    print(f"📤 Enviado para {phone}: {message}")
+    print("📨 Status:", response.status_code)
+    print("📨 Resposta:", response.text)
 
-def gerar_resposta(pergunta):
-    resposta = openai.chat.completions.create(
+def send_audio(phone, nome_arquivo):
+    url = f"{API_URL}/send-audio"
+    headers = {
+        "Content-Type": "application/json",
+        "Client-Token": ZAPI_CLIENT_TOKEN
+    }
+    payload = {
+        "phone": phone,
+        "audio": f"{PASTA_AUDIOS}{nome_arquivo}"
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    print(f"🎙️ Áudio enviado: {nome_arquivo} → {phone}")
+    print("📨 Status:", response.status_code)
+    print("📨 Resposta:", response.text)
+
+def responder_com_blocos(phone, resposta):
+    blocos = dividir_em_blocos(resposta)
+    loop = asyncio.new_event_loop()
+
+    async def enviar_blocos():
+        for bloco in blocos:
+            delay = delay_por_bloco(bloco)
+            await delay_seguro(delay)
+            send_text(phone, bloco)
+
+    loop.run_in_executor(executor, loop.run_until_complete, enviar_blocos())
+
+# === FLUXO PRINCIPAL ===
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.json
+    print("📦 Payload recebido:", data)
+
+    if data.get("type") != "ReceivedCallback":
+        return "ignored", 200
+
+    phone = data.get("phone")
+    if not phone:
+        return "ignored", 200
+
+    # Envia boas-vindas se for primeira interação
+    if phone not in USERS_RESPONDED:
+        print("📢 Enviando áudio de boas-vindas...")
+        send_audio(phone, "boas_vindas.ogg")
+        USERS_RESPONDED.add(phone)
+
+    # Se vier texto
+    if "text" in data:
+        message = data["text"].get("message", "")
+        if message:
+            resposta = gerar_resposta_ia(message)
+            responder_com_blocos(phone, resposta)
+
+    # Se vier áudio
+    elif "audio" in data:
+        audio_url = data["audio"].get("audioUrl")
+        if audio_url:
+            try:
+                print("🔊 Baixando áudio...")
+                caminho = baixar_audio(audio_url)
+                print("🧠 Transcrevendo com Whisper...")
+                transcricao = transcrever_whisper(caminho)
+                print("✅ Transcrição:", transcricao)
+                resposta = gerar_resposta_ia(transcricao)
+                responder_com_blocos(phone, resposta)
+            except Exception as e:
+                print("❌ Erro ao transcrever:", e)
+
+    return "ok", 200
+
+# === INTEGRAÇÃO COM OPENAI ===
+
+def gerar_resposta_ia(texto):
+    client = openai.OpenAI(api_key=OPENAI_API_KEY)
+
+    resposta = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
-            {"role": "system", "content": "Você é um atendente cordial da empresa Caplux Suplementos, especializada em produtos para queda de cabelo."},
-            {"role": "user", "content": pergunta}
+            {"role": "system", "content": "Você é um atendente simpático da empresa Caplux Suplementos, especializada em queda de cabelo."},
+            {"role": "user", "content": texto}
         ]
     )
     return resposta.choices[0].message.content.strip()
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    data = request.get_json()
+def baixar_audio(url):
+    nome_arquivo = "temp_audio.ogg"
+    resposta = requests.get(url)
+    with open(nome_arquivo, "wb") as f:
+        f.write(resposta.content)
+    return nome_arquivo
 
-    if not data:
-        return jsonify({"error": "Payload inválido"}), 400
+def transcrever_whisper(caminho_ogg):
+    client = openai.OpenAI(api_key=OPENAI_API_KEY)
+    with open(caminho_ogg, "rb") as audio_file:
+        transcription = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file
+        )
+    return transcription.text.strip()
 
-    tipo = data.get("type")
-    telefone = data.get("phone")
-
-    if data.get("fromMe"):
-        return jsonify({"status": "ignorado"}), 200
-
-    if tipo == "ReceivedCallback":
-        if "audio" in data:
-            try:
-                url_audio = data["audio"]["audioUrl"]
-                texto = transcrever_audio(url_audio)
-                resposta = gerar_resposta(texto)
-                responder_com_blocos(telefone, resposta)
-            except Exception as e:
-                print("Erro ao transcrever ou responder:", e)
-        elif "text" in data:
-            msg = data["text"]["message"]
-            if msg.lower() in ["oi", "olá", "bom dia", "boa tarde", "boa noite"]:
-                enviar_audio(telefone, URL_AUDIO)
-            resposta = gerar_resposta(msg)
-            responder_com_blocos(telefone, resposta)
-
-    return jsonify({"status": "ok"}), 200
-
+# === EXECUÇÃO LOCAL ===
 if __name__ == "__main__":
+    print("✅ Servidor Caplux iniciado localmente...")
     app.run(host="0.0.0.0", port=10000)

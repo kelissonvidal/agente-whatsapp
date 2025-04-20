@@ -1,162 +1,86 @@
-
 import os
 import time
 import requests
 import asyncio
 from flask import Flask, request, jsonify
 from openai import OpenAI
-from urllib.parse import quote
 
 app = Flask(__name__)
 
-# Variáveis de ambiente
-INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
-TOKEN = os.getenv("ZAPI_TOKEN")
-CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN")
+API_BASE = "https://api.z-api.io/instances/" + os.getenv("ZAPI_INSTANCE_ID")
+HEADERS = {
+    "Authorization": os.getenv("ZAPI_CLIENT_TOKEN"),
+    "Content-Type": "application/json"
+}
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-API_BASE = f"https://api.z-api.io/instances/{INSTANCE_ID}/token/{TOKEN}"
-
-# Novo cliente OpenAI
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-# Áudios inteligentes: nome do arquivo => intenções relacionadas
-AUDIO_MAP = {
-    "boas_vindas.ogg": ["oi", "olá", "bom dia", "boa tarde", "boa noite"],
-    "formas_pagamento.ogg": ["formas de pagamento", "como posso pagar", "aceita pix", "pagamento"],
-    "prazo_entrega.ogg": ["prazo", "entrega", "tempo de entrega", "chegar", "frete"],
-    "garantia.ogg": ["garantia", "seguro", "funcionar", "não der certo", "caso não funcione"]
+AUDIO_REPO_URL = "https://raw.githubusercontent.com/kelissonvidal/agente-whatsapp/main/data/"
+INTENCOES_AUDIO = {
+    "prazo de entrega": "prazo_entrega.ogg",
+    "formas de pagamento": "formas_pagamento.ogg",
+    "garantia": "garantia.ogg"
 }
 
-# URL base dos áudios
-AUDIO_BASE_URL = "https://raw.githubusercontent.com/kelissonvidal/agente-whatsapp/main/data"
-
-# Controle de mensagens recentes para travar loops
-mensagens_enviadas = set()
-
-def detectar_intencao(texto):
-    texto = texto.lower()
-    for arquivo, padroes in AUDIO_MAP.items():
-        if any(p in texto for p in padroes):
-            return arquivo
-    return None
-
-def dividir_em_blocos(texto, limite=12):
-    palavras = texto.split()
-    blocos = []
-    bloco = []
-
-    for palavra in palavras:
-        bloco.append(palavra)
-        if len(bloco) >= limite and palavra.endswith((".", "!", "?")):
-            blocos.append(" ".join(bloco))
-            bloco = []
-
-    if bloco:
-        blocos.append(" ".join(bloco))
-
-    return blocos
-
-def calcular_delay(bloco):
+async def delay_por_bloco(bloco):
     palavras = len(bloco.split())
-    if palavras < 10:
-        return 2
-    elif palavras < 15:
-        return 3
-    return 4
+    if palavras <= 8:
+        await asyncio.sleep(2)
+    elif palavras <= 12:
+        await asyncio.sleep(3)
+    else:
+        await asyncio.sleep(4)
 
-async def responder_com_blocos(telefone, resposta):
-    blocos = dividir_em_blocos(resposta)
+def enviar_audio(numero, nome_arquivo):
+    audio_url = AUDIO_REPO_URL + nome_arquivo
+    payload = {"phone": numero, "audio": audio_url}
+    try:
+        r = requests.post(f"{API_BASE}/send-audio", headers=HEADERS, json=payload)
+        print(f"[AUDIO] Enviado: {nome_arquivo} → {numero}")
+        print(f"[Z-API] Status: {r.status_code} | Resposta: {r.text}")
+    except Exception as e:
+        print(f"[ERRO] Falha ao enviar áudio: {e}")
+
+def responder_texto(numero, texto):
+    payload = {"phone": numero, "message": texto}
+    r = requests.post(f"{API_BASE}/send-text", headers=HEADERS, json=payload)
+    print(f"[TEXTO] Enviado para {numero}: {texto}")
+    print(f"[Z-API] Status: {r.status_code} | Resposta: {r.text}")
+
+async def responder_com_blocos(numero, resposta):
+    blocos = resposta.split(". ")
     for bloco in blocos:
-        if bloco in mensagens_enviadas:
-            continue
-        mensagens_enviadas.add(bloco)
+        if bloco.strip():
+            responder_texto(numero, bloco.strip())
+            await delay_por_bloco(bloco)
 
-        payload = {
-            "phone": telefone,
-            "message": bloco
-        }
-        headers = {"Client-Token": CLIENT_TOKEN}
-        response = requests.post(f"{API_BASE}/send-text", headers=headers, json=payload)
-
-        print(f"[TEXTO] Enviado para {telefone}: {bloco}")
-        print("[Z-API] Status:", response.status_code, "| Resposta:", response.text)
-
-        await asyncio.sleep(calcular_delay(bloco))
-
-def enviar_audio(telefone, nome_arquivo):
-    url = f"{AUDIO_BASE_URL}/{quote(nome_arquivo)}"
-    payload = {
-        "phone": telefone,
-        "audio": url
-    }
-    headers = {"Client-Token": CLIENT_TOKEN}
-    response = requests.post(f"{API_BASE}/send-audio", headers=headers, json=payload)
-
-    print(f"[ÁUDIO] Enviado: {nome_arquivo} → {telefone}")
-    print("[Z-API] Status:", response.status_code, "| Resposta:", response.text)
+def detectar_audio_inteligente(texto):
+    texto = texto.lower()
+    for chave, nome_arquivo in INTENCOES_AUDIO.items():
+        if chave in texto:
+            return nome_arquivo
+    return None
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json()
-    print("📦 Payload recebido:", data)
+    data = request.json
 
-    if data.get("type") != "ReceivedCallback" or data.get("fromMe"):
-        return jsonify({"status": "ignorado"})
+    if not data or "type" not in data or data["type"] != "ReceivedCallback":
+        return jsonify({"status": "ignored"}), 200
+
+    if data.get("fromApi"):
+        return jsonify({"status": "ignored - fromApi"}), 200
 
     telefone = data.get("phone")
-    mensagem = data.get("text", {}).get("message", "")
-    audio = data.get("audio", {})
+    texto = data.get("text", {}).get("message", "").lower()
 
-    # IA deve responder apenas se não estiver em loop
-    if mensagem and not data.get("fromApi"):
-        if mensagem.lower().strip() in mensagens_enviadas:
-            return jsonify({"status": "loop evitado"})
-
-        intencao_audio = detectar_intencao(mensagem)
-        if intencao_audio:
-            enviar_audio(telefone, intencao_audio)
+    if texto:
+        nome_audio = detectar_audio_inteligente(texto)
+        if nome_audio:
+            enviar_audio(telefone, nome_audio)
         else:
-            asyncio.run(responder_com_blocos(telefone, gerar_resposta_ia(mensagem)))
+            resposta = "Olá, como posso ajudá-lo hoje? Você está interessado em suplementos para queda de cabelo?"
+            asyncio.run(responder_com_blocos(telefone, resposta))
 
-    if audio and not data.get("fromApi"):
-        url_audio = audio.get("audioUrl")
-        transcricao = transcrever_audio(url_audio)
-        if transcricao:
-            print("✅ Transcrição:", transcricao)
-            intencao_audio = detectar_intencao(transcricao)
-            if intencao_audio:
-                enviar_audio(telefone, intencao_audio)
-            else:
-                asyncio.run(responder_com_blocos(telefone, gerar_resposta_ia(transcricao)))
-
-    return jsonify({"status": "ok"})
-
-def transcrever_audio(audio_url):
-    try:
-        with client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_url,
-            response_format="text",
-            language="pt"
-        ) as response:
-            return response.text
-    except Exception as e:
-        print("Erro ao transcrever áudio:", e)
-        return None
-
-def gerar_resposta_ia(texto_usuario):
-    try:
-        resposta = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "Você é um atendente comercial da empresa Caplux Suplementos. Responda de forma humanizada, simpática, sem repetir a mesma pergunta. Seja direto, como um atendente real."},
-                {"role": "user", "content": texto_usuario}
-            ]
-        )
-        return resposta.choices[0].message.content.strip()
-    except Exception as e:
-        print("Erro ao gerar resposta da IA:", e)
-        return "Desculpe, não consegui entender sua pergunta."
+    return jsonify({"status": "ok"}), 200
 
 if __name__ == "__main__":
-    app.run(port=10000)
+    app.run(host="0.0.0.0", port=10000)

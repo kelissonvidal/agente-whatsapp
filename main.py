@@ -1,6 +1,6 @@
 import os
 import requests
-import time
+import asyncio
 import openai
 from flask import Flask, request, jsonify
 
@@ -39,10 +39,10 @@ def delay_por_bloco(bloco):
         return 4
     return 3
 
-def responder_com_blocos(telefone, texto):
+async def responder_com_blocos(telefone, texto):
     blocos = quebrar_em_blocos(texto)[:3]
     for bloco in blocos:
-        time.sleep(delay_por_bloco(bloco))
+        await asyncio.sleep(delay_por_bloco(bloco))
         payload = {"phone": telefone, "message": bloco}
         headers = {
             "Content-Type": "application/json",
@@ -118,7 +118,7 @@ def webhook():
                 ]
             ).choices[0].message.content
 
-            responder_com_blocos(telefone, resposta_ia)
+            asyncio.run(responder_com_blocos(telefone, resposta_ia))
 
         except Exception as e:
             print("❌ Erro ao transcrever ou responder:", str(e))
@@ -133,7 +133,7 @@ def webhook():
                     {"role": "user", "content": texto_recebido}
                 ]
             ).choices[0].message.content
-            responder_com_blocos(telefone, resposta_ia)
+            asyncio.run(responder_com_blocos(telefone, resposta_ia))
         except Exception as e:
             print("❌ Erro ao responder texto:", str(e))
             return jsonify({"status": "erro"}), 500

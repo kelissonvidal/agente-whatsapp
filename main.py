@@ -7,6 +7,7 @@ import os
 import asyncio
 from urllib.parse import quote
 from io import BytesIO
+import re
 
 app = Flask(__name__)
 
@@ -19,10 +20,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 API_BASE = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}"
-
-HEADERS = {
-    "Client-Token": ZAPI_CLIENT_TOKEN
-}
+HEADERS = { "Client-Token": ZAPI_CLIENT_TOKEN }
 
 AUDIO_MAP = {
     "boas_vindas": "boas_vindas.ogg",
@@ -33,22 +31,34 @@ AUDIO_MAP = {
 
 AUDIO_URL_BASE = "https://raw.githubusercontent.com/kelissonvidal/agente-whatsapp/main/data/"
 
-# Intent keywords
 INTENTS = {
     "formas_pagamento": ["forma de pagamento", "pagamento", "parcelar", "cartão", "pix", "boleto"],
-    "prazo_entrega": ["prazo", "entrega", "quando chega", "demora", "frete"],
+    "prazo_entrega": ["prazo", "entrega", "quando chega", "demora", "frete", "quanto tempo", "leva pra chegar", "tempo de entrega"],
     "garantia": ["garantia", "se não funcionar", "dinheiro de volta", "e se não der certo"]
 }
 
-def detectar_intencao(mensagem):
-    mensagem = mensagem.lower()
+def detectar_intencao(texto):
+    texto = texto.lower()
     for chave, palavras in INTENTS.items():
-        if any(p in mensagem or mensagem in p for p in palavras):
+        if any(p in texto or texto in p for p in palavras):
             return chave
     return None
 
+def detectar_intencao_com_nlp(texto):
+    prompt = f"A seguinte pergunta está relacionada a prazo de entrega, formas de pagamento, garantia ou nenhuma das opções? Responda apenas com uma das palavras: prazo_entrega, formas_pagamento, garantia ou nenhuma. Pergunta: {texto}"
+    try:
+        resp = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        resposta = resp.choices[0].message.content.strip().lower()
+        if resposta in AUDIO_MAP:
+            return resposta
+    except Exception as e:
+        print("[NLP] Erro ao detectar intenção:", e)
+    return None
+
 def dividir_em_blocos(texto, max_palavras=12):
-    import re
     sentencas = re.split(r'(?<=[.!?]) +', texto)
     blocos = []
     bloco = ""
@@ -70,20 +80,14 @@ def delay_por_bloco(bloco):
     return max(2, min(5, palavras * 0.25))
 
 def enviar_mensagem(telefone, mensagem):
-    payload = {
-        "phone": telefone,
-        "message": mensagem
-    }
+    payload = { "phone": telefone, "message": mensagem }
     response = requests.post(f"{API_BASE}/send-text", headers=HEADERS, json=payload)
     print(f"[TEXTO] Enviado para {telefone}: {mensagem}")
     print("[Z-API] Status:", response.status_code, "| Resposta:", response.text)
 
 def enviar_audio(telefone, nome_arquivo):
     url_audio = f"{AUDIO_URL_BASE}{nome_arquivo}"
-    payload = {
-        "audio": url_audio,
-        "phone": telefone
-    }
+    payload = { "audio": url_audio, "phone": telefone }
     response = requests.post(f"{API_BASE}/send-audio", headers=HEADERS, json=payload)
     print(f"[ÁUDIO] Enviado: {nome_arquivo} → {telefone}")
     print("[Z-API] Status:", response.status_code, "| Resposta:", response.text)
@@ -129,6 +133,8 @@ def webhook():
             return jsonify({"status": "ok"})
 
         intencao = detectar_intencao(mensagem_texto)
+        if not intencao:
+            intencao = detectar_intencao_com_nlp(mensagem_texto)
         if intencao:
             enviar_audio(telefone, AUDIO_MAP[intencao])
         asyncio.run(responder_com_blocos(telefone, gerar_resposta_ia(mensagem_texto)))
@@ -141,6 +147,8 @@ def webhook():
 
         if texto_transcrito:
             intencao = detectar_intencao(texto_transcrito)
+            if not intencao:
+                intencao = detectar_intencao_com_nlp(texto_transcrito)
             if intencao:
                 enviar_audio(telefone, AUDIO_MAP[intencao])
             resposta_ia = gerar_resposta_ia(texto_transcrito)

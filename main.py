@@ -40,36 +40,34 @@ INTENTS = {
     "garantia": ["garantia", "se não funcionar", "dinheiro de volta", "e se não der certo"]
 }
 
-
 def detectar_intencao(mensagem):
     mensagem = mensagem.lower()
     for chave, palavras in INTENTS.items():
-        if any(p in mensagem for p in palavras):
+        if any(p in mensagem or mensagem in p for p in palavras):
             return chave
     return None
 
-
 def dividir_em_blocos(texto, max_palavras=12):
-    palavras = texto.split()
+    import re
+    sentencas = re.split(r'(?<=[.!?]) +', texto)
     blocos = []
-    bloco = []
+    bloco = ""
 
-    for palavra in palavras:
-        bloco.append(palavra)
-        if len(bloco) >= max_palavras:
-            blocos.append(" ".join(bloco))
-            bloco = []
-
+    for sentenca in sentencas:
+        palavras = sentenca.split()
+        if len(bloco.split()) + len(palavras) <= max_palavras:
+            bloco += " " + sentenca if bloco else sentenca
+        else:
+            if bloco:
+                blocos.append(bloco.strip())
+            bloco = sentenca
     if bloco:
-        blocos.append(" ".join(bloco))
-
+        blocos.append(bloco.strip())
     return blocos
-
 
 def delay_por_bloco(bloco):
     palavras = len(bloco.split())
     return max(2, min(5, palavras * 0.25))
-
 
 def enviar_mensagem(telefone, mensagem):
     payload = {
@@ -79,7 +77,6 @@ def enviar_mensagem(telefone, mensagem):
     response = requests.post(f"{API_BASE}/send-text", headers=HEADERS, json=payload)
     print(f"[TEXTO] Enviado para {telefone}: {mensagem}")
     print("[Z-API] Status:", response.status_code, "| Resposta:", response.text)
-
 
 def enviar_audio(telefone, nome_arquivo):
     url_audio = f"{AUDIO_URL_BASE}{nome_arquivo}"
@@ -91,13 +88,11 @@ def enviar_audio(telefone, nome_arquivo):
     print(f"[ÁUDIO] Enviado: {nome_arquivo} → {telefone}")
     print("[Z-API] Status:", response.status_code, "| Resposta:", response.text)
 
-
 async def responder_com_blocos(telefone, resposta):
     blocos = dividir_em_blocos(resposta)
     for bloco in blocos:
         await asyncio.sleep(delay_por_bloco(bloco))
         enviar_mensagem(telefone, bloco)
-
 
 def transcrever_audio(url):
     try:
@@ -106,13 +101,12 @@ def transcrever_audio(url):
         with BytesIO(resposta.content) as f:
             transcript = openai.audio.transcriptions.create(
                 model="whisper-1",
-                file=f
+                file=("audio.ogg", f)
             )
         return transcript.text
     except Exception as e:
         print("[ERRO] Transcrição falhou:", e)
         return ""
-
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -154,7 +148,6 @@ def webhook():
         return jsonify({"status": "ok"})
 
     return jsonify({"status": "ignorado"})
-
 
 def gerar_resposta_ia(mensagem):
     prompt = f"Mensagem do cliente: '{mensagem}'. Responda de forma breve, simpática e natural como se fosse um atendente humano."

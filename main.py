@@ -2,115 +2,46 @@
 from flask import Flask, request, jsonify
 import requests
 import openai
-import time
 import os
 import asyncio
-from urllib.parse import quote
 from io import BytesIO
-import re
+import time
 
 app = Flask(__name__)
 
+# Variáveis de ambiente
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
 ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-openai.api_key = OPENAI_API_KEY
-
 API_BASE = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}"
 HEADERS = { "Client-Token": ZAPI_CLIENT_TOKEN }
 
-AUDIO_MAP = {
-    "boas_vindas": "boas_vindas.ogg",
-    "formas_pagamento": "formas_pagamento.ogg",
-    "prazo_entrega": "prazo_entrega.ogg",
-    "garantia": "garantia.ogg",
-}
-
-AUDIO_URL_BASE = "https://raw.githubusercontent.com/kelissonvidal/agente-whatsapp/main/data/"
-INTENTS = {
-    "formas_pagamento": ["forma de pagamento", "pagamento", "parcelar", "cartão", "pix", "boleto"],
-    "prazo_entrega": ["prazo", "entrega", "quando chega", "demora", "frete", "quanto tempo", "leva pra chegar", "tempo de entrega"],
-    "garantia": ["garantia", "se não funcionar", "dinheiro de volta", "e se não der certo"]
-}
-
+# Sessão por número
 SESSOES = {}
 
-def detectar_intencao(texto):
-    texto = texto.lower()
-    for chave, palavras in INTENTS.items():
-        if any(p in texto or texto in p for p in palavras):
-            return chave
-    return None
-
-def detectar_intencao_com_nlp(texto):
-    prompt = f"A seguinte pergunta está relacionada a prazo de entrega, formas de pagamento, garantia ou nenhuma das opções? Responda apenas com uma das palavras: prazo_entrega, formas_pagamento, garantia ou nenhuma. Pergunta: {texto}"
-    try:
-        resp = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        resposta = resp.choices[0].message.content.strip().lower()
-        if resposta in AUDIO_MAP:
-            return resposta
-    except Exception as e:
-        print("[NLP] Erro ao detectar intenção:", e)
-    return None
-
-def dividir_em_blocos(texto, max_palavras=12):
-    sentencas = re.split(r'(?<=[.!?]) +', texto)
-    blocos = []
-    bloco = ""
-
-    for sentenca in sentencas:
-        palavras = sentenca.split()
-        if len(bloco.split()) + len(palavras) <= max_palavras:
-            bloco += " " + sentenca if bloco else sentenca
-        else:
-            if bloco:
-                blocos.append(bloco.strip())
-            bloco = sentenca
-    if bloco:
-        blocos.append(bloco.strip())
-    return blocos
-
-def delay_por_bloco(bloco):
-    palavras = len(bloco.split())
-    return max(2.5, min(6, palavras * 0.35))
+# Mapear blocos de texto do final
+BLOCOS_FECHAMENTO = [
+    "Maravilha! Parabéns pela decisão de transformar de vez um problema capilar em cabelos lindos, saudáveis e fortes.",
+    "Agora vou embalar seu Caplux e despachar via correios e volto aqui para te informar o código de rastreio.",
+    "Me informe por favor esses dados abaixo:\n- Nome completo.\n- CPF para emitir o boleto.\n- Bairro, Rua e número.\n- Cidade, Estado e Cep.",
+    "Obrigado pela confiança."
+]
 
 def enviar_mensagem(telefone, mensagem):
     payload = { "phone": telefone, "message": mensagem }
-    response = requests.post(f"{API_BASE}/send-text", headers=HEADERS, json=payload)
-    print(f"[TEXTO] Enviado para {telefone}: {mensagem}")
-    print("[Z-API] Status:", response.status_code, "| Resposta:", response.text)
+    requests.post(f"{API_BASE}/send-text", headers=HEADERS, json=payload)
 
 def enviar_audio(telefone, nome_arquivo):
-    url_audio = f"{AUDIO_URL_BASE}{nome_arquivo}"
-    payload = { "audio": url_audio, "phone": telefone }
-    response = requests.post(f"{API_BASE}/send-audio", headers=HEADERS, json=payload)
-    print(f"[ÁUDIO] Enviado: {nome_arquivo} → {telefone}")
-    print("[Z-API] Status:", response.status_code, "| Resposta:", response.text)
+    url = f"https://raw.githubusercontent.com/kelissonvidal/agente-whatsapp/main/data/{nome_arquivo}"
+    payload = { "phone": telefone, "audio": url }
+    requests.post(f"{API_BASE}/send-audio", headers=HEADERS, json=payload)
 
-async def responder_com_blocos(telefone, resposta):
-    blocos = dividir_em_blocos(resposta)
-    for bloco in blocos:
-        await asyncio.sleep(delay_por_bloco(bloco))
+async def enviar_blocos_finais(telefone):
+    for bloco in BLOCOS_FECHAMENTO:
+        await asyncio.sleep(4)
         enviar_mensagem(telefone, bloco)
-
-def transcrever_audio(url):
-    try:
-        resposta = requests.get(url)
-        resposta.raise_for_status()
-        with BytesIO(resposta.content) as f:
-            transcript = openai.audio.transcriptions.create(
-                model="whisper-1",
-                file=("audio.ogg", f)
-            )
-        return transcript.text
-    except Exception as e:
-        print("[ERRO] Transcrição falhou:", e)
-        return ""
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -120,75 +51,37 @@ def webhook():
         return jsonify({"status": "ignorado"})
 
     telefone = data.get("phone")
-    mensagem_texto = data.get("text", {}).get("message")
-    audio_info = data.get("audio")
+    mensagem = data.get("text", {}).get("message", "").strip()
+    sessao = SESSOES.setdefault(telefone, {"etapa": 1, "aguardando_resposta": False})
 
-    sessao = SESSOES.setdefault(telefone, {"etapa": 0, "nome": None, "permite_audio": None})
+    etapa = sessao["etapa"]
 
-    def avancar_etapa():
+    if etapa == 1 and not sessao["aguardando_resposta"]:
+        enviar_audio(telefone, "audio_1.ogg")
+        sessao["aguardando_resposta"] = True
+        return jsonify({"status": "etapa_1_enviada"})
+
+    if etapa in [2, 3, 4, 5] and not sessao["aguardando_resposta"]:
+        enviar_audio(telefone, f"audio_{etapa}.ogg")
+        sessao["aguardando_resposta"] = True
+        return jsonify({"status": f"audio_{etapa}_enviado"})
+
+    if etapa in [1, 2, 3, 4, 5] and sessao["aguardando_resposta"]:
         sessao["etapa"] += 1
+        sessao["aguardando_resposta"] = False
+        return jsonify({"status": "resposta_recebida_etapa_" + str(etapa)})
 
-    if mensagem_texto:
-        if sessao["etapa"] == 0:
-            enviar_mensagem(telefone, "Olá! Seja muito bem-vindo. Qual é o seu nome, por favor?")
-            avancar_etapa()
-            return jsonify({"status": "aguardando_nome"})
+    if etapa in [6, 7, 8]:
+        enviar_audio(telefone, f"audio_{etapa}.ogg")
+        time.sleep(8)
+        sessao["etapa"] += 1
+        return jsonify({"status": f"audio_{etapa}_automático_enviado"})
 
-        elif sessao["etapa"] == 1:
-            sessao["nome"] = mensagem_texto.strip().split()[0].capitalize()
-            enviar_mensagem(telefone, f"Obrigado, {sessao['nome']}! Você prefere que eu responda só por texto ou também posso enviar áudios quando for mais fácil?")
-            avancar_etapa()
-            return jsonify({"status": "aguardando_preferencia"})
+    if etapa == 9:
+        enviar_audio(telefone, "audio_9.ogg")
+        time.sleep(8)
+        asyncio.run(enviar_blocos_finais(telefone))
+        sessao["etapa"] += 1
+        return jsonify({"status": "audio_9_e_blocos_finais_enviados"})
 
-        elif sessao["etapa"] == 2:
-            msg = mensagem_texto.lower()
-            if "texto" in msg and "áudio" not in msg:
-                sessao["permite_audio"] = False
-            else:
-                sessao["permite_audio"] = True
-            avancar_etapa()
-            saudacao = f"Perfeito, {sessao['nome']}! Em que posso te ajudar hoje?"
-            enviar_mensagem(telefone, saudacao)
-            return jsonify({"status": "pronto_para_atendimento"})
-
-        intencao = detectar_intencao(mensagem_texto)
-        if not intencao:
-            intencao = detectar_intencao_com_nlp(mensagem_texto)
-        if intencao and sessao.get("permite_audio"):
-            enviar_audio(telefone, AUDIO_MAP[intencao])
-        asyncio.run(responder_com_blocos(telefone, gerar_resposta_ia(mensagem_texto, sessao["nome"])))
-        return jsonify({"status": "atendido"})
-
-    if audio_info and audio_info.get("audioUrl"):
-        url_audio = audio_info["audioUrl"]
-        texto_transcrito = transcrever_audio(url_audio)
-        print("✅ Transcrição:", texto_transcrito)
-
-        if texto_transcrito:
-            intencao = detectar_intencao(texto_transcrito)
-            if not intencao:
-                intencao = detectar_intencao_com_nlp(texto_transcrito)
-            if intencao and sessao.get("permite_audio"):
-                enviar_audio(telefone, AUDIO_MAP[intencao])
-            resposta = gerar_resposta_ia(texto_transcrito, sessao.get("nome"))
-            asyncio.run(responder_com_blocos(telefone, resposta))
-        return jsonify({"status": "ok"})
-
-    return jsonify({"status": "ignorado"})
-
-def gerar_resposta_ia(mensagem, nome=None):
-    base = f"Mensagem do cliente: '{mensagem}'. Responda de forma breve, simpática e natural como se fosse um atendente humano."
-    if nome:
-        base += f" Use o nome '{nome}' de forma ocasional nas mensagens, se fizer sentido no contexto."
-    try:
-        resposta = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": base}]
-        )
-        return resposta.choices[0].message.content.strip()
-    except Exception as e:
-        print("[ERRO] Falha ao gerar resposta da IA:", e)
-        return "Desculpe, algo deu errado ao tentar responder."
-
-if __name__ == "__main__":
-    app.run(debug=True)
+    return jsonify({"status": "finalizado"})

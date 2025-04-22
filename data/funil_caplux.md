@@ -26,4 +26,5 @@ Me chamo Dr Ricardo, sou especialista em saúde capilar. Que bom que você está
 ## Áudio 8
 "Agora que você já sabe como funciona o Caplux, deixa eu te explicar como você vai receber e pagar. Eu vou te enviar os potes com as cápsulas direto na sua casa. Você vai tomar as cápsulas diariamente e, em até 30 dias, já vai começar a ver os primeiros resultados. E sabe o melhor? Você tem 3 meses de garantia. Ou seja, dá pra testar com total tranquilidade."
 
+## Áudio 9
 "Ah, e o pagamento é ainda mais fácil: vamos fazer via boleto, sem juros, diferente do cartão de crédito. Eu mesmo coloco os boletos dentro da caixinha junto com o produto. Assim você só paga quando receber. Tudo prático, transparente e seguro. Está pronta para começar?"

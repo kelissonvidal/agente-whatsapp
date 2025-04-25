@@ -28,7 +28,7 @@ SESSOES = {}
 BLOCOS_FECHAMENTO = [
     "Maravilha! Parabéns pela decisão de transformar de vez um problema capilar em cabelos lindos, saudáveis e fortes.",
     "Agora vou embalar seu Caplux e despachar via correios e volto aqui para te informar o código de rastreio.",
-    "Me informe por favor esses dados abaixo:\\n- Nome completo.\\n- CPF para emitir o boleto.\\n- Bairro, Rua e número.\\n- Cidade, Estado e Cep.",
+    "Me informe por favor esses dados abaixo:\n- Nome completo.\n- CPF para emitir o boleto.\n- Bairro, Rua e número.\n- Cidade, Estado e Cep.",
     "Obrigado pela confiança."
 ]
 
@@ -77,7 +77,7 @@ def gerar_resposta_ia(mensagem, nome=None):
 def registrar_demanda(telefone, mensagem):
     try:
         dt = datetime.now().strftime("%d/%m/%Y %H:%M")
-        entrada = f"🕓 {dt}\\n📞 Cliente: {telefone}\\n💬 Pergunta: {mensagem}\\n⚠️ Status: Fora do escopo\\n---\\n"
+        entrada = f"🕓 {dt}\n📞 Cliente: {telefone}\n💬 Pergunta: {mensagem}\n⚠️ Status: Fora do escopo\n---\n"
         atual = requests.get(GITHUB_API_URL, headers=GITHUB_HEADERS).json()
         conteudo = b64decode(atual["content"]).decode() + entrada
         novo = b64encode(conteudo.encode()).decode()
@@ -95,19 +95,21 @@ async def webhook():
     telefone = data.get("phone")
     mensagem = data.get("text", {}).get("message", "").strip()
     audio = data.get("audio", {}).get("audioUrl")
-    sessao = SESSOES.setdefault(telefone, {
-        "estado": "inicio",
-        "nome": None,
-        "permite_audio": None,
-        "etapa": 1
-    })
 
-    estado = sessao["estado"]
-
-    if estado == "inicio":
+    # Recomeça o fluxo se não existir ou se já finalizou
+    if telefone not in SESSOES or SESSOES[telefone].get("estado") == "finalizado":
+        SESSOES[telefone] = {
+            "estado": "inicio",
+            "nome": None,
+            "permite_audio": None,
+            "etapa": 1
+        }
         enviar_mensagem(telefone, "Olá! Seja muito bem-vindo. Qual é o seu nome, por favor?")
-        sessao["estado"] = "aguardando_nome"
-        return jsonify({"status": "perguntou_nome"})
+        SESSOES[telefone]["estado"] = "aguardando_nome"
+        return jsonify({"status": "fluxo_reiniciado"})
+
+    sessao = SESSOES[telefone]
+    estado = sessao["estado"]
 
     if estado == "aguardando_nome" and mensagem:
         sessao["nome"] = mensagem.split()[0].capitalize()

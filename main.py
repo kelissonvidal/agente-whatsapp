@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 import requests
 import openai
 import os
-import asyncio
+import time
 from io import BytesIO
 from datetime import datetime
 from base64 import b64decode, b64encode
@@ -41,9 +41,9 @@ def enviar_audio(telefone, nome_arquivo):
     payload = {"phone": telefone, "audio": url}
     requests.post(f"{API_BASE}/send-audio", headers=HEADERS, json=payload)
 
-async def enviar_blocos_finais(telefone):
+def enviar_blocos_finais(telefone):
     for bloco in BLOCOS_FECHAMENTO:
-        await asyncio.sleep(4)
+        time.sleep(4)
         enviar_mensagem(telefone, bloco)
 
 def transcrever_audio(url):
@@ -61,9 +61,9 @@ def transcrever_audio(url):
         return ""
 
 def gerar_resposta_ia(mensagem, nome=None):
-    prompt = f"Mensagem do cliente: '{mensagem}'. Responda de forma simpática e natural como um atendente humano do produto Caplux, suplemento para queda de cabelo."
+    prompt = f"Mensagem do cliente: '{mensagem}'. Responda como um atendente humano do Caplux, suplemento para queda de cabelo."
     if nome:
-        prompt += f" Use o nome {nome} ocasionalmente."
+        prompt += f" Use o nome {nome} de forma natural."
     try:
         resposta = openai.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -87,7 +87,7 @@ def registrar_demanda(telefone, mensagem):
         print("[GitHub] Falha:", e)
 
 @app.route("/webhook", methods=["POST"])
-async def webhook():
+def webhook():
     data = request.get_json()
     if data.get("type") != "ReceivedCallback" or data.get("fromMe"):
         return jsonify({"status": "ignorado"})
@@ -96,17 +96,11 @@ async def webhook():
     mensagem = data.get("text", {}).get("message", "").strip()
     audio = data.get("audio", {}).get("audioUrl")
 
-    # Recomeça o fluxo se não existir ou se já finalizou
     if telefone not in SESSOES or SESSOES[telefone].get("estado") == "finalizado":
-        SESSOES[telefone] = {
-            "estado": "inicio",
-            "nome": None,
-            "permite_audio": None,
-            "etapa": 1
-        }
+        SESSOES[telefone] = {"estado": "inicio", "nome": None, "permite_audio": None, "etapa": 1}
         enviar_mensagem(telefone, "Olá! Seja muito bem-vindo. Qual é o seu nome, por favor?")
         SESSOES[telefone]["estado"] = "aguardando_nome"
-        return jsonify({"status": "fluxo_reiniciado"})
+        return jsonify({"status": "fluxo_iniciado"})
 
     sessao = SESSOES[telefone]
     estado = sessao["estado"]
@@ -148,13 +142,13 @@ async def webhook():
                 enviar_audio(telefone, f"audio_{etapa_auto}.ogg")
             else:
                 enviar_mensagem(telefone, f"(Texto alternativo do áudio {etapa_auto})")
-            await asyncio.sleep(8)
+            time.sleep(8)
         if sessao["permite_audio"]:
             enviar_audio(telefone, "audio_9.ogg")
         else:
             enviar_mensagem(telefone, "(Texto alternativo ao áudio 9)")
         sessao["estado"] = "aguardando_resposta_9"
-        await enviar_blocos_finais(telefone)
+        enviar_blocos_finais(telefone)
         return jsonify({"status": "fluxo_automatico_finalizado"})
 
     if estado == "aguardando_resposta_9" and (mensagem or audio):
@@ -166,7 +160,7 @@ async def webhook():
         resposta = gerar_resposta_ia(mensagem, sessao.get("nome"))
         enviar_mensagem(telefone, resposta)
         registrar_demanda(telefone, mensagem)
-        return jsonify({"status": "fallback_resposta_texto"})
+        return jsonify({"status": "resposta_fallback_texto"})
 
     if audio:
         texto = transcrever_audio(audio)
@@ -174,6 +168,6 @@ async def webhook():
             resposta = gerar_resposta_ia(texto, sessao.get("nome"))
             enviar_mensagem(telefone, resposta)
             registrar_demanda(telefone, texto)
-        return jsonify({"status": "fallback_resposta_audio"})
+        return jsonify({"status": "resposta_fallback_audio"})
 
     return jsonify({"status": "sem_acao"})

@@ -45,7 +45,6 @@ def enviar_blocos_finais(telefone):
     for bloco in BLOCOS_FECHAMENTO:
         time.sleep(4)
         enviar_mensagem(telefone, bloco)
-
 def transcrever_audio(url):
     try:
         resposta = requests.get(url)
@@ -85,7 +84,6 @@ def registrar_demanda(telefone, mensagem):
         requests.put(GITHUB_API_URL, headers=GITHUB_HEADERS, json=update_payload)
     except Exception as e:
         print("[GitHub] Falha:", e)
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
@@ -133,23 +131,20 @@ def webhook():
                     enviar_mensagem(telefone, f"(Texto alternativo do áudio {proxima})")
                 sessao["estado"] = f"aguardando_resposta_{proxima}"
             elif proxima == 6:
-                sessao["estado"] = "fluxo_automatico"
+                # CORREÇÃO: Continua automaticamente após o áudio 5
+                for etapa_auto in [6, 7, 8]:
+                    if sessao["permite_audio"]:
+                        enviar_audio(telefone, f"audio_{etapa_auto}.ogg")
+                    else:
+                        enviar_mensagem(telefone, f"(Texto alternativo do áudio {etapa_auto})")
+                    time.sleep(8)
+                if sessao["permite_audio"]:
+                    enviar_audio(telefone, "audio_9.ogg")
+                else:
+                    enviar_mensagem(telefone, "(Texto alternativo ao áudio 9)")
+                sessao["estado"] = "aguardando_resposta_9"
+                enviar_blocos_finais(telefone)
             return jsonify({"status": f"etapa_{etapa}_respondida"})
-
-    if estado == "fluxo_automatico":
-        for etapa_auto in [6, 7, 8]:
-            if sessao["permite_audio"]:
-                enviar_audio(telefone, f"audio_{etapa_auto}.ogg")
-            else:
-                enviar_mensagem(telefone, f"(Texto alternativo do áudio {etapa_auto})")
-            time.sleep(8)
-        if sessao["permite_audio"]:
-            enviar_audio(telefone, "audio_9.ogg")
-        else:
-            enviar_mensagem(telefone, "(Texto alternativo ao áudio 9)")
-        sessao["estado"] = "aguardando_resposta_9"
-        enviar_blocos_finais(telefone)
-        return jsonify({"status": "fluxo_automatico_finalizado"})
 
     if estado == "aguardando_resposta_9" and (mensagem or audio):
         enviar_mensagem(telefone, "Perfeito, pedido confirmado! Obrigado pela confiança. 🚀")
@@ -160,7 +155,7 @@ def webhook():
         resposta = gerar_resposta_ia(mensagem, sessao.get("nome"))
         enviar_mensagem(telefone, resposta)
         registrar_demanda(telefone, mensagem)
-        return jsonify({"status": "resposta_fallback_texto"})
+        return jsonify({"status": "fallback_resposta_texto"})
 
     if audio:
         texto = transcrever_audio(audio)
@@ -168,6 +163,6 @@ def webhook():
             resposta = gerar_resposta_ia(texto, sessao.get("nome"))
             enviar_mensagem(telefone, resposta)
             registrar_demanda(telefone, texto)
-        return jsonify({"status": "resposta_fallback_audio"})
+        return jsonify({"status": "fallback_resposta_audio"})
 
     return jsonify({"status": "sem_acao"})
